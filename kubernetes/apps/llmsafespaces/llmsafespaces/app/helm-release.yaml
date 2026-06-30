@@ -1,0 +1,146 @@
+---
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: llmsafespaces
+  namespace: llmsafespaces
+spec:
+  interval: 30m
+  chart:
+    spec:
+      chart: ./charts/llmsafespaces
+      sourceRef:
+        kind: GitRepository
+        name: llmsafespaces
+        namespace: flux-system
+      reconcileStrategy: Revision
+  install:
+    remediation:
+      retries: 3
+    timeout: 10m
+    # The chart's RuntimeEnvironment CR creation goes through a
+    # validating webhook that the controller serves. On a fresh
+    # install the controller pod isn't ready yet → webhook 503.
+    # Set failurePolicy=Ignore (via values below) and the chart
+    # accepts the CR; webhook reattaches once controller is up.
+  upgrade:
+    cleanupOnFail: true
+    remediation:
+      strategy: rollback
+      retries: 3
+    timeout: 10m
+  # K8s Secret with the credentials. ExternalSecret materializes it
+  # before the chart's pre-install hooks run.
+  dependsOn:
+    - name: llmsafespaces-credentials-externalsecret
+      namespace: llmsafespaces
+  values:
+    api:
+      replicaCount: 1
+      image:
+        # Image refs come from the cluster-config ConfigMap (CDK-managed
+        # via llmsafespaces:imageRefs context). Format: ghcr.io/...:tag
+        # We split into repo+tag for the chart's image template.
+        repository: ${IMAGE_REPO_API}
+        tag: ${IMAGE_TAG_API}
+        pullPolicy: IfNotPresent
+      config:
+        security:
+          allowedOrigins:
+            - "https://${DOMAIN}"
+        logging:
+          level: info
+          development: false
+      ingress:
+        # API is reached via the frontend ingress at /api; no separate
+        # API ingress needed.
+        enabled: false
+
+    controller:
+      replicaCount: 1
+      image:
+        repository: ${IMAGE_REPO_CONTROLLER}
+        tag: ${IMAGE_TAG_CONTROLLER}
+        pullPolicy: IfNotPresent
+      inferenceRelay:
+        enabled: false
+
+    # See lenaxia/LLMSafeSpaces#474: chart default points at maintainer's
+    # private relay (relay.safespaces.dev). Empty → workspace agent
+    # routes directly to opencode.ai/zen/v1 with the public anonymous key.
+    inferenceRelayURL: ""
+
+    frontend:
+      enabled: true
+      image:
+        repository: ${IMAGE_REPO_FRONTEND}
+        tag: ${IMAGE_TAG_FRONTEND}
+        pullPolicy: IfNotPresent
+      ingress:
+        enabled: true
+        className: alb
+        host: ${DOMAIN}
+        # Chart's frontend-ingress.yaml hardcodes a `tls:` block for
+        # the nginx-ingress + cert-manager pattern. ALB terminates TLS
+        # via the certificate-arn annotation, not a K8s Secret.
+        tls: false
+        annotations:
+          kubernetes.io/ingress.class: alb
+          alb.ingress.kubernetes.io/scheme: internet-facing
+          alb.ingress.kubernetes.io/target-type: ip
+          alb.ingress.kubernetes.io/listen-ports: '[{"HTTP":80},{"HTTPS":443}]'
+          alb.ingress.kubernetes.io/ssl-redirect: '443'
+          alb.ingress.kubernetes.io/healthcheck-path: /livez
+          alb.ingress.kubernetes.io/certificate-arn: ${ACM_CERT_ARN}
+
+    runtimeEnvironments:
+      base:
+        image:
+          repository: ${IMAGE_REPO_BASE}
+          tag: ${IMAGE_TAG_BASE}
+
+    mcp:
+      enabled: false
+
+    postgresql:
+      host: ${POSTGRES_HOST}
+      port: 5432
+      # `llmsafespaces_admin` matches rds.Credentials.fromGeneratedSecret
+      # in DataStack.
+      user: llmsafespaces_admin
+      database: llmsafespaces
+      sslMode: require
+
+    redis:
+      host: ${VALKEY_HOST}
+      port: 6379
+      db: 0
+
+    externalSecret:
+      create: false
+      existingSecret: llmsafespaces-credentials
+
+    crds:
+      install: true
+
+    # Cluster-scoped RBAC. Namespace-scoped breaks the controller's
+    # cluster-wide informer (lenaxia/LLMSafeSpaces#469).
+    rbac:
+      scope: cluster
+
+    webhooks:
+      enabled: true
+      # See `install.remediation` comment above — Fail on steady state.
+      failurePolicy: Ignore
+      allowedImageRegistries:
+        - "ghcr.io/lenaxia/"
+
+    networkPolicy:
+      enabled: true
+
+    monitoring:
+      enabled: false
+
+    gvisor:
+      enabled: true
+      defaultRuntimeClass: gvisor

@@ -1,0 +1,83 @@
+---
+# Source of truth for the cluster's desired state. Flux pulls this repo
+# every 2 minutes and reconciles all Kustomizations defined under
+# kubernetes/.
+apiVersion: source.toolkit.fluxcd.io/v1
+kind: GitRepository
+metadata:
+  name: llmsafespaces-ops
+  namespace: flux-system
+spec:
+  interval: 2m
+  url: "https://github.com/lenaxia/llmsafespaces-ops-prod.git"
+  ref:
+    branch: "main"
+  ignore: |
+    # exclude all
+    /*
+    # include kubernetes directory
+    !/kubernetes
+---
+# Top-level Kustomization that recursively applies everything under
+# kubernetes/flux. That directory holds:
+#   - kubernetes/flux/repositories  (HelmRepository definitions)
+#   - kubernetes/flux/vars          (cluster-wide ConfigMap + SOPS Secret)
+#   - kubernetes/apps               (applied via individual Kustomizations
+#                                    in apps/<ns>/<app>/ks.yaml)
+#
+# The substituteFrom block makes vars from cluster-settings ConfigMap +
+# cluster-secrets Secret available as ${VAR} in any downstream manifest.
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: cluster
+  namespace: flux-system
+spec:
+  interval: 2m
+  path: ./kubernetes/flux
+  prune: true
+  wait: false
+  sourceRef:
+    kind: GitRepository
+    name: llmsafespaces-ops
+  decryption:
+    provider: sops
+    secretRef:
+      name: sops-age
+  postBuild:
+    substituteFrom:
+      - kind: ConfigMap
+        name: cluster-settings
+      - kind: Secret
+        name: cluster-secrets
+        optional: true
+---
+# Apps Kustomization. Recurses through kubernetes/apps to apply each
+# namespace's kustomization.yaml, which in turn references each app's
+# ks.yaml (a Flux Kustomization defining how to apply the app).
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: cluster-apps
+  namespace: flux-system
+spec:
+  interval: 10m
+  dependsOn:
+    - name: cluster
+  path: ./kubernetes/apps
+  prune: true
+  wait: false
+  sourceRef:
+    kind: GitRepository
+    name: llmsafespaces-ops
+  decryption:
+    provider: sops
+    secretRef:
+      name: sops-age
+  postBuild:
+    substituteFrom:
+      - kind: ConfigMap
+        name: cluster-settings
+      - kind: Secret
+        name: cluster-secrets
+        optional: true

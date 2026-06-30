@@ -1,0 +1,11 @@
+---
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - ./helm/external-secrets.yaml
+  - ./helm/jetstack.yaml
+  - ./helm/eks-charts.yaml
+  - ./helm/victoriametrics.yaml
+  - ./helm/grafana.yaml
+  - ./helm/falcosecurity.yaml
+  - ./git/llmsafespaces.yaml

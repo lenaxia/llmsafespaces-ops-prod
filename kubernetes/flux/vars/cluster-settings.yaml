@@ -1,0 +1,21 @@
+---
+# Cluster-wide variables, available as ${VAR} substitutions in any
+# downstream manifest via the cluster Kustomization's postBuild.
+#
+# Stage-specific / environment-specific values (account IDs, hostnames,
+# domain) come from the CDK deploy via a separate ConfigMap that CDK
+# materializes — search for `cluster-config` (we should avoid duplicating
+# what CDK already knows).
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: cluster-settings
+  namespace: flux-system
+data:
+  # The public hostname for the ALB ingress.
+  # Overridden in cdk-created ConfigMap; this is the default for fresh
+  # repos with no CDK-side override yet.
+  DOMAIN: "safespaces.thekao.cloud"
+  TIMEZONE: "America/Los_Angeles"
+  CLUSTER_NAME: "llmsafespaces"
+  AWS_REGION: "us-west-2"

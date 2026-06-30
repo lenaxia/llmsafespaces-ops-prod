@@ -1,0 +1,16 @@
+---
+apiVersion: source.toolkit.fluxcd.io/v1
+kind: GitRepository
+metadata:
+  name: llmsafespaces
+  namespace: flux-system
+spec:
+  interval: 1h
+  url: https://github.com/lenaxia/LLMSafeSpaces.git
+  ref:
+    # Pin to a specific tag/commit for reproducibility. Bump when
+    # upstream releases. Currently main is fine; pin when stable.
+    branch: main
+  ignore: |
+    /*
+    !/charts

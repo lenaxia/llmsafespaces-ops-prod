@@ -1,0 +1,14 @@
+# SOPS encryption config for llmsafespaces-ops-prod.
+# Files matching `*.sops.yaml` are encrypted to the age recipient below.
+# The matching private key lives in:
+#   - Operator's laptop at ~/.config/sops/age/keys.txt
+#   - Cluster: kubectl create secret generic sops-age -n flux-system --from-file=age.agekey
+#
+# Bootstrap procedure for a fresh operator:
+#   1. Get the age private key from the team's password manager
+#   2. Save it to ~/.config/sops/age/keys.txt
+#   3. `sops -d kubernetes/flux/vars/secret.sops.yaml` should print the cluster secrets
+creation_rules:
+  - path_regex: kubernetes/.*\.sops\.ya?ml
+    encrypted_regex: "^(data|stringData|values)$"
+    age: age1neq2c3wrcvgjtxyuywm4sruphm4dl4tx9jejfam8p54msvfy09zqxkh9x4

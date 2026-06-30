@@ -1,0 +1,45 @@
+---
+apiVersion: source.toolkit.fluxcd.io/v1
+kind: OCIRepository
+metadata:
+  name: flux-manifests
+  namespace: flux-system
+spec:
+  interval: 10m
+  url: oci://ghcr.io/fluxcd/flux-manifests
+  ref:
+    tag: v2.8.8
+---
+# Self-managed Flux installation. The OCIRepository above is the source
+# of truth for Flux's own controllers; Flux applies its own manifests
+# from there. After this lands, `flux check` reports the install as
+# managed by Flux itself.
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: flux
+  namespace: flux-system
+spec:
+  interval: 10m
+  path: ./
+  prune: true
+  wait: true
+  sourceRef:
+    kind: OCIRepository
+    name: flux-manifests
+  patches:
+    # Bump concurrency + API throttling. Defaults are tuned for very
+    # small clusters; we expect dozens of HelmReleases at steady state.
+    - patch: |
+        - op: add
+          path: /spec/template/spec/containers/0/args/-
+          value: --concurrent=8
+        - op: add
+          path: /spec/template/spec/containers/0/args/-
+          value: --kube-api-qps=500
+        - op: add
+          path: /spec/template/spec/containers/0/args/-
+          value: --kube-api-burst=1000
+      target:
+        kind: Deployment
+        labelSelector: app.kubernetes.io/component in (kustomize-controller, helm-controller, source-controller)

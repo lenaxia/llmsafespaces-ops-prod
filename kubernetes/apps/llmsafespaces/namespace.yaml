@@ -1,0 +1,13 @@
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: llmsafespaces
+  labels:
+    # PSA `baseline` instead of `restricted` until upstream
+    # lenaxia/LLMSafeSpaces#468 ships (frontend copy-html initContainer
+    # missing capabilities.drop). Audit/warn at `restricted` to surface
+    # any other workloads that would fail the stricter policy.
+    pod-security.kubernetes.io/enforce: baseline
+    pod-security.kubernetes.io/audit: restricted
+    pod-security.kubernetes.io/warn: restricted

@@ -1,0 +1,5 @@
+age.agekey
+.cache/
+.envrc
+*.swp
+.DS_Store

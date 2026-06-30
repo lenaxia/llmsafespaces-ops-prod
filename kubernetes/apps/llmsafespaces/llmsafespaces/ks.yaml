@@ -1,0 +1,56 @@
+---
+# Stage 1: Materialize the ExternalSecret. The chart's pre-install hook
+# would race a fresh-generated K8s Secret otherwise, so this lands
+# first and HelmRelease waits on it.
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: llmsafespaces-credentials-externalsecret
+  namespace: flux-system
+spec:
+  targetNamespace: llmsafespaces
+  path: ./kubernetes/apps/llmsafespaces/llmsafespaces/externalsecret
+  prune: true
+  sourceRef:
+    kind: GitRepository
+    name: llmsafespaces-ops
+  wait: true
+  interval: 30m
+  retryInterval: 1m
+  timeout: 5m
+  dependsOn:
+    - name: cluster-external-secrets
+  healthChecks:
+    - apiVersion: external-secrets.io/v1beta1
+      kind: ExternalSecret
+      name: llmsafespaces-credentials
+      namespace: llmsafespaces
+---
+# Stage 2: Deploy the chart + workarounds.
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: cluster-llmsafespaces
+  namespace: flux-system
+spec:
+  targetNamespace: llmsafespaces
+  commonMetadata:
+    labels:
+      app.kubernetes.io/name: llmsafespaces
+  dependsOn:
+    - name: llmsafespaces-credentials-externalsecret
+    - name: cluster-cert-manager
+  path: ./kubernetes/apps/llmsafespaces/llmsafespaces/app
+  prune: true
+  sourceRef:
+    kind: GitRepository
+    name: llmsafespaces-ops
+  wait: true
+  interval: 30m
+  retryInterval: 1m
+  timeout: 15m
+  healthChecks:
+    - apiVersion: helm.toolkit.fluxcd.io/v2
+      kind: HelmRelease
+      name: llmsafespaces
+      namespace: llmsafespaces
