@@ -29,11 +29,12 @@ spec:
       strategy: rollback
       retries: 3
     timeout: 10m
-  # K8s Secret with the credentials. ExternalSecret materializes it
-  # before the chart's pre-install hooks run.
-  dependsOn:
-    - name: llmsafespaces-credentials-externalsecret
-      namespace: llmsafespaces
+  # The K8s Secret this chart depends on (llmsafespaces-credentials)
+  # is materialized by the ExternalSecret in a prior Flux Kustomization
+  # stage; see ks.yaml `llmsafespaces-credentials-externalsecret` and
+  # `cluster-llmsafespaces` dependsOn chain. HelmRelease.dependsOn
+  # is for other HelmReleases, not Kustomizations, so we don't set it
+  # here.
   values:
     api:
       replicaCount: 1
