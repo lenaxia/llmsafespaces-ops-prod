@@ -8,7 +8,11 @@ spec:
   interval: 10m
   url: oci://ghcr.io/fluxcd/flux-manifests
   ref:
-    tag: v2.8.8
+    # Must match the Flux version CDK's Helm chart installs.
+    # CDK ships chart 2.17.2 → Flux 2.7.5. Bump both together when the
+    # cluster's K8s version supports newer Flux (Flux 2.8+ needs K8s
+    # 1.33+; we're on 1.32).
+    tag: v2.7.5
 ---
 # Self-managed Flux installation. The OCIRepository above is the source
 # of truth for Flux's own controllers; Flux applies its own manifests
