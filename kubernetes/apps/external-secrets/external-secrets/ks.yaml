@@ -1,4 +1,5 @@
 ---
+# Stage 1: Install the operator (Helm chart + CRDs).
 apiVersion: kustomize.toolkit.fluxcd.io/v1
 kind: Kustomization
 metadata:
@@ -16,10 +17,35 @@ spec:
     name: llmsafespaces-ops
   wait: true
   interval: 30m
-  timeout: 5m
+  timeout: 10m
   retryInterval: 1m
   healthChecks:
     - apiVersion: helm.toolkit.fluxcd.io/v2
       kind: HelmRelease
       name: external-secrets
       namespace: external-secrets
+---
+# Stage 2: After the operator + CRDs are ready, apply the
+# ClusterSecretStore. Split into its own Kustomization so the
+# CRD-referencing CR isn't dry-run-checked against a cluster that
+# doesn't have the CRD yet (chicken-and-egg on first install).
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: cluster-external-secrets-store
+  namespace: flux-system
+spec:
+  commonMetadata:
+    labels:
+      app.kubernetes.io/name: external-secrets
+  dependsOn:
+    - name: cluster-external-secrets
+  path: ./kubernetes/apps/external-secrets/external-secrets/store
+  prune: true
+  sourceRef:
+    kind: GitRepository
+    name: llmsafespaces-ops
+  wait: true
+  interval: 30m
+  timeout: 5m
+  retryInterval: 1m
