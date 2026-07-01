@@ -8,4 +8,5 @@ resources:
   - ./helm/victoriametrics.yaml
   - ./helm/grafana.yaml
   - ./helm/falcosecurity.yaml
+  - ./helm/vector.yaml
   - ./git/llmsafespaces.yaml

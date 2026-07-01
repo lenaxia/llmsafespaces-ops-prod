@@ -1,0 +1,47 @@
+# Alertmanager configuration Secret.
+# Encrypted with SOPS (age recipient in .sops.yaml).
+# Decrypted by Flux's kustomize-controller at apply time.
+#
+# The vm-stack chart's Alertmanager subchart mounts this Secret
+# (referenced via `alertmanager.spec.configSecret: alertmanager-config`
+# in the chart HelmRelease).
+#
+# Routes:
+#   - default: goes to both slack + pushover (with pushover only for
+#     critical severity to avoid mobile notification spam)
+#   - Dead-man's switch: a Watchdog alert fires continuously; if it
+#     STOPS firing, Alertmanager itself is broken. We forward Watchdog
+#     to Slack only (Pushover would spam).
+#
+# Slack webhook URL and Pushover credentials are placeholders below.
+# Before this file is useful, do:
+#   sops kubernetes/apps/monitoring/alertmanager/alertmanager-config.sops.yaml
+# and replace the placeholder values.
+apiVersion: v1
+kind: Secret
+metadata:
+    name: alertmanager-config
+    namespace: monitoring
+type: Opaque
+stringData:
+    alertmanager.yaml: ENC[AES256_GCM,data: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,iv:ANKSou263uo6nFyc5eLsS+QhM2PlCt5APjK5q+s2QE8=,tag:IFdYJxkGj9uiHgiW7rhOKg==,type:str]
+sops:
+    kms: []
+    gcp_kms: []
+    azure_kv: []
+    hc_vault: []
+    age:
+        - recipient: age1neq2c3wrcvgjtxyuywm4sruphm4dl4tx9jejfam8p54msvfy09zqxkh9x4
+          enc: |
+            -----BEGIN AGE ENCRYPTED FILE-----
+            YWdlLWVuY3J5cHRpb24ub3JnL3YxCi0+IFgyNTUxOSBoZTBhTEdlcE9uMzIvci9Z
+            U3lYbmFpdmZyZmxEZHhLRDBpRldtNERDdnlZClRDK0E5bUVyUnFUeU92LzVqT1d6
+            dUhxa283VEt2ZFp0VXl4a2cwL1pOSDQKLS0tIFVrKytJL0R0NVR6MWYxejZ4V2t3
+            YWZrTW5qa0ZzN2JhR0Y0SUpjYTJYeG8KH3NQRKYH5nimT6gZWtdewDvqRVVzXeeL
+            SyYq+4HZ9lU11O8kLHpGFoSwmssNW7TF+Yo1rzpYGFt29eUgoM1S0A==
+            -----END AGE ENCRYPTED FILE-----
+    lastmodified: "2026-07-01T21:43:02Z"
+    mac: ENC[AES256_GCM,data:ilwB+sLLYwLIXQukPC/DB2OSuiRtGyU5B+y6YHhxt/OLrXGcjOrRf59V/OsBgyaJQUZRZA42asxFgYmOJQLqZPta1jTms4xVEAblDDeOfa/QZbbcRJHIN1XwyqP5pkLWO7p2VZRfnpR1Js/NRjCnnn+G8glVy6CmivCsviRumHg=,iv:dksH5Nmv0fNnx23QUUo8TdSuk/nC9zDW9oHAs75qDVQ=,tag:wn7r/9LOl+GHOnXGmQ3UZg==,type:str]
+    pgp: []
+    encrypted_regex: ^(data|stringData|values)$
+    version: 3.9.4

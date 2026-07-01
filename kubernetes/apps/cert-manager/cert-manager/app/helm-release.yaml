@@ -29,3 +29,20 @@ spec:
     global:
       leaderElection:
         namespace: cert-manager
+    # HA: 2 replicas per controller with anti-affinity so at least one
+    # survives a node reclaim. PDBs (see pdb.yaml) enforce minAvailable
+    # during voluntary disruptions (drains).
+    replicaCount: 2
+    webhook:
+      replicaCount: 2
+    cainjector:
+      replicaCount: 2
+    # Topology-spread across nodes for the controller pods.
+    topologySpreadConstraints:
+      - maxSkew: 1
+        topologyKey: kubernetes.io/hostname
+        whenUnsatisfiable: DoNotSchedule
+        labelSelector:
+          matchLabels:
+            app.kubernetes.io/component: controller
+            app.kubernetes.io/instance: cert-manager

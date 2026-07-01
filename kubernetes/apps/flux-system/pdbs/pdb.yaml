@@ -1,0 +1,48 @@
+---
+# PDBs for the Flux controllers installed by CDK.
+#
+# CDK owns the HelmRelease of flux2 itself; ops-prod adds the PDBs
+# on top so Flux self-management doesn't strip them.
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: helm-controller
+  namespace: flux-system
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/component: helm-controller
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: kustomize-controller
+  namespace: flux-system
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/component: kustomize-controller
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: source-controller
+  namespace: flux-system
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/component: source-controller
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: notification-controller
+  namespace: flux-system
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/component: notification-controller

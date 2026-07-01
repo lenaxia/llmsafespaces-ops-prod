@@ -1,0 +1,36 @@
+---
+# Deploy VictoriaMetrics + Alertmanager + Grafana + node-exporter +
+# kube-state-metrics as a single stack.
+#
+# Depends on external-secrets so the grafana-admin ExternalSecret can
+# materialize.
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: cluster-monitoring-vmstack
+  namespace: flux-system
+spec:
+  targetNamespace: monitoring
+  commonMetadata:
+    labels:
+      app.kubernetes.io/name: victoria-metrics-k8s-stack
+  dependsOn:
+    - name: cluster-external-secrets-store
+  path: ./kubernetes/apps/monitoring/victoria-metrics-k8s-stack/app
+  prune: true
+  sourceRef:
+    kind: GitRepository
+    name: llmsafespaces-ops
+  wait: true
+  interval: 30m
+  timeout: 20m
+  retryInterval: 2m
+  decryption:
+    provider: sops
+    secretRef:
+      name: sops-age
+  healthChecks:
+    - apiVersion: helm.toolkit.fluxcd.io/v2
+      kind: HelmRelease
+      name: victoria-metrics-k8s-stack
+      namespace: monitoring

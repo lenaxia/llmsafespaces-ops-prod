@@ -1,0 +1,49 @@
+---
+# HA patches for cluster infrastructure components:
+#   - cert-manager (3 Deployments)
+#   - external-secrets (3 Deployments)
+#   - Flux controllers (6 Deployments)
+#
+# Each bumped to 2 replicas with a PodDisruptionBudget of minAvailable: 1.
+# During a node reclaim (spot interruption, patching, etc.) the drain
+# process leaves at least one pod healthy while the other reschedules.
+#
+# App-tier Deployments (llmsafespaces-api/controller/frontend) stay at
+# 1 replica on the mvp tier to keep costs low; they'll be bumped when
+# tier=prod flips in CDK (see llmsafespaces-aws-cdk lib/config.ts
+# haPostureFor()).
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: cert-manager
+  namespace: cert-manager
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: cert-manager
+      app.kubernetes.io/component: controller
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: cert-manager-webhook
+  namespace: cert-manager
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: webhook
+      app.kubernetes.io/instance: cert-manager
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: cert-manager-cainjector
+  namespace: cert-manager
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: cainjector
+      app.kubernetes.io/instance: cert-manager

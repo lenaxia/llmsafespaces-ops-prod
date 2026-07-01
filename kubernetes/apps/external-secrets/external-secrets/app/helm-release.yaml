@@ -24,6 +24,14 @@ spec:
       retries: 3
   values:
     installCRDs: true
+    # HA: 2 replicas of each controller (see pdb.yaml for PDBs).
+    replicaCount: 2
+    webhook:
+      create: true
+      replicaCount: 2
+    certController:
+      create: true
+      replicaCount: 2
     serviceAccount:
       annotations:
         # IRSA role ARN materialized by CDK and exposed via the
@@ -32,7 +40,3 @@ spec:
         eks.amazonaws.com/role-arn: "${EXTERNAL_SECRETS_ROLE_ARN}"
     bitwarden:
       enabled: false
-    webhook:
-      create: true
-    certController:
-      create: true

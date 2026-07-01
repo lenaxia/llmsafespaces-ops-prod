@@ -1,0 +1,175 @@
+---
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: falco
+  namespace: security
+spec:
+  interval: 30m
+  chart:
+    spec:
+      chart: falco
+      version: 4.20.0
+      sourceRef:
+        kind: HelmRepository
+        name: falcosecurity
+        namespace: flux-system
+  install:
+    remediation:
+      retries: 3
+    timeout: 10m
+  upgrade:
+    cleanupOnFail: true
+    remediation:
+      strategy: rollback
+      retries: 3
+  values:
+    # Kernel driver: modern-bpf (CO-RE eBPF) — no kernel headers needed,
+    # works on any modern kernel including AL2023. This is the default
+    # and recommended for production.
+    driver:
+      kind: modern-bpf
+
+    # Falco is a DaemonSet — runs on every node.
+    tty: true
+
+    # Ship events to Falcosidekick for alert routing.
+    falcosidekick:
+      enabled: true
+      webui:
+        enabled: false  # Skip the WebUI to keep resource footprint small.
+      config:
+        # Alertmanager is our alert fanout hub. Falco events → Alertmanager
+        # → Slack/Pushover via the same routing rules.
+        alertmanager:
+          hostport: "http://vmalertmanager-victoria-metrics-k8s-stack.monitoring.svc.cluster.local:9093"
+          # Only send warning+ to alertmanager to avoid firehose.
+          minimumpriority: warning
+
+    # Enable extra rulesets:
+    #   - k8s_audit — needs k8s audit-log webhook (skip, EKS audit is in CW)
+    #   - application — includes crypto-mining rules ✓
+    collectors:
+      enabled: true
+      containerd:
+        enabled: true
+      docker:
+        enabled: false
+      crio:
+        enabled: false
+      kubernetes:
+        enabled: false  # EKS API audit is CloudWatch-based.
+
+    # Custom rules for workspace pods.
+    customRules:
+      llmsafespaces_workspace_rules.yaml: |
+        # Rules specific to the llmsafespaces workspace pods.
+        #
+        # Priority levels:
+        #   emergency, alert, critical, error, warning, notice, informational
+        #
+        # Falco default output goes to stdout; we route via falcosidekick.
+
+        - macro: workspace_pod
+          condition: (k8s.ns.name = "llmsafespaces" and k8s.pod.label.app.kubernetes.io/name = "workspace")
+
+        # Crypto-mining process names (comprehensive but not exhaustive).
+        - list: crypto_miner_binaries
+          items: [xmrig, ethminer, ccminer, cgminer, sgminer, cpuminer,
+                  minerd, phoenixminer, teamredminer, nbminer, t-rex,
+                  gminer, lolminer, bminer, srbminer, xmr-stak]
+
+        # Standard Falco has this rule but we bump it to critical for
+        # workspace pods since we own the isolation and any hit is
+        # actionable.
+        - rule: Workspace pod running crypto miner
+          desc: >
+            Detect known crypto miner binary running inside a workspace
+            pod. Overrides default priority to critical because our
+            workspace tenants aren't trusted.
+          condition: >
+            spawned_process
+            and workspace_pod
+            and (proc.name in (crypto_miner_binaries)
+                 or proc.cmdline contains "stratum+tcp"
+                 or proc.cmdline contains "mining.pool")
+          output: >
+            Crypto miner detected in workspace
+            (workspace=%k8s.pod.name proc=%proc.name cmdline=%proc.cmdline
+             user=%user.name container=%container.id)
+          priority: CRITICAL
+          tags: [workspace, cryptomining, mitre_impact]
+
+        - rule: Workspace pod outbound to mining pool
+          desc: >
+            Detect a workspace pod connecting to a well-known crypto
+            mining pool. Cheap catch-net; assumes standard resolver.
+          condition: >
+            outbound
+            and workspace_pod
+            and (fd.sip.name contains "pool" and fd.sport in (3333, 4444, 5555, 7777, 8888, 9999))
+          output: >
+            Workspace pod connecting to mining pool
+            (workspace=%k8s.pod.name dest=%fd.sip.name:%fd.sport container=%container.id)
+          priority: WARNING
+          tags: [workspace, cryptomining, network]
+
+        # Detect fork bombs / suspicious rapid process spawns.
+        - rule: Workspace excessive fork rate
+          desc: Detect a workspace spawning >100 processes/sec (fork bomb).
+          condition: >
+            spawned_process
+            and workspace_pod
+          output: >
+            Rapid process spawn in workspace
+            (workspace=%k8s.pod.name proc=%proc.name)
+          priority: NOTICE
+          tags: [workspace, abuse]
+
+    # Resource requests: Falco is a DaemonSet so we care per-node.
+    resources:
+      requests:
+        cpu: 100m
+        memory: 512Mi
+      limits:
+        cpu: 1000m
+        memory: 1Gi
+
+    # Tolerate any taint so Falco runs on every node.
+    tolerations:
+      - operator: Exists
+
+    # Load default rules + our custom rules.
+    falcoctl:
+      artifact:
+        install:
+          enabled: true
+        follow:
+          enabled: true
+      config:
+        artifact:
+          install:
+            refs:
+              - falco-rules:latest
+          follow:
+            refs:
+              - falco-rules:latest
+
+    falco:
+      # Bind the SocketFile — required for falcosidekick.
+      grpc:
+        enabled: true
+        threadiness: 8
+      grpcOutput:
+        enabled: true
+      # Standard events go to stdout for cluster log capture.
+      stdoutOutput:
+        enabled: true
+      jsonOutput: true
+      jsonIncludeOutputProperty: true
+      # Fail-open on kernel driver load failure — better than pods stuck.
+      httpOutput:
+        enabled: false
+      # Priority threshold — anything below this is dropped at source.
+      # Default = debug; bump to notice to reduce volume.
+      priority: notice

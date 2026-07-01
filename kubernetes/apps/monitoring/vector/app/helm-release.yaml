@@ -1,0 +1,76 @@
+---
+# Vector — logs collector deployed as DaemonSet. Reads container logs
+# from /var/log/containers on every node and ships to Loki.
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: vector
+  namespace: monitoring
+spec:
+  interval: 30m
+  chart:
+    spec:
+      chart: vector
+      version: 0.36.1
+      sourceRef:
+        # Vector's chart lives on its own repo, but we can add it. For
+        # simplicity in this MVP we use the sibling chart from Grafana
+        # that ships promtail. Vector proper needs a new HelmRepository.
+        # Deferred — see task.
+        kind: HelmRepository
+        name: vector
+        namespace: flux-system
+  install:
+    remediation:
+      retries: 3
+  upgrade:
+    cleanupOnFail: true
+    remediation:
+      strategy: rollback
+      retries: 3
+  values:
+    role: Agent
+    dataDir: /vector-data-dir
+    tolerations:
+      - operator: Exists
+    customConfig:
+      data_dir: /vector-data-dir
+      api:
+        enabled: true
+        address: 127.0.0.1:8686
+        playground: false
+      sources:
+        kubernetes_logs:
+          type: kubernetes_logs
+          # Skip Vector's own logs to avoid a feedback loop.
+          extra_field_selector: metadata.namespace!=monitoring
+      transforms:
+        pod_info:
+          type: remap
+          inputs: [kubernetes_logs]
+          source: |
+            # Flatten common labels to top-level fields for easier LogQL.
+            .namespace = .kubernetes.pod_namespace
+            .pod = .kubernetes.pod_name
+            .container = .kubernetes.container_name
+      sinks:
+        loki:
+          type: loki
+          inputs: [pod_info]
+          # Loki single-binary Service (loki-gateway disabled in HelmRelease).
+          endpoint: http://loki.monitoring.svc.cluster.local:3100
+          # Auth off (single-tenant); no tenant_id required.
+          encoding:
+            codec: json
+          labels:
+            namespace: '{{ namespace }}'
+            pod: '{{ pod }}'
+            container: '{{ container }}'
+          out_of_order_action: accept
+    resources:
+      requests:
+        cpu: 100m
+        memory: 128Mi
+      limits:
+        cpu: 500m
+        memory: 512Mi

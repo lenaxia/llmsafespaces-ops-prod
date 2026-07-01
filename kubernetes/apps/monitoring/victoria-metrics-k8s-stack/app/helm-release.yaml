@@ -1,0 +1,175 @@
+---
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: victoria-metrics-k8s-stack
+  namespace: monitoring
+spec:
+  interval: 30m
+  chart:
+    spec:
+      chart: victoria-metrics-k8s-stack
+      version: 0.35.3
+      sourceRef:
+        kind: HelmRepository
+        name: victoriametrics
+        namespace: flux-system
+  install:
+    remediation:
+      retries: 3
+    timeout: 15m
+    crds: CreateReplace
+  upgrade:
+    cleanupOnFail: true
+    remediation:
+      strategy: rollback
+      retries: 3
+    crds: CreateReplace
+  values:
+    # VictoriaMetrics single-node — good for our scale (< 1M series).
+    # Migrate to vmcluster if we outgrow this.
+    vmsingle:
+      enabled: true
+      spec:
+        retentionPeriod: "30d"
+        replicaCount: 1
+        resources:
+          requests:
+            cpu: 100m
+            memory: 512Mi
+          limits:
+            cpu: 1000m
+            memory: 2Gi
+        storage:
+          accessModes: [ReadWriteOnce]
+          resources:
+            requests:
+              storage: 20Gi
+          storageClassName: gp3
+
+    # vmagent scrapes ServiceMonitor + PodMonitor + VMServiceScrape targets
+    # and remote-writes to vmsingle.
+    vmagent:
+      enabled: true
+      spec:
+        replicaCount: 1
+        selectAllByDefault: true
+        # Enable both Prometheus-native ServiceMonitor/PodMonitor CRDs
+        # AND VictoriaMetrics' VMServiceScrape (chart supports both).
+        serviceScrapeSelector: {}
+        podScrapeSelector: {}
+        probeSelector: {}
+        resources:
+          requests:
+            cpu: 100m
+            memory: 256Mi
+          limits:
+            cpu: 500m
+            memory: 1Gi
+
+    # vmalert evaluates PrometheusRule CRDs (and native VMRule) and pushes
+    # alerts to Alertmanager.
+    vmalert:
+      enabled: true
+      spec:
+        replicaCount: 1
+        # By default it evaluates all VMRule + PrometheusRule in-cluster.
+        selectAllByDefault: true
+        evaluationInterval: 30s
+        resources:
+          requests:
+            cpu: 50m
+            memory: 128Mi
+          limits:
+            cpu: 200m
+            memory: 512Mi
+
+    # Alertmanager: bundled and configured to talk to our alertmanager
+    # config (see alertmanager-config.yaml). Chart lets us disable the
+    # bundled config and mount our own via alertmanagerSpec.configSecret.
+    alertmanager:
+      enabled: true
+      # Use our own config Secret (created by alertmanager-config.sops.yaml)
+      # rather than the chart's default.
+      spec:
+        replicaCount: 1
+        # ConfigSecret name — Flux applies alertmanager-config.sops.yaml
+        # (decrypted by kustomize-controller via SOPS) which creates this
+        # Secret in the same namespace.
+        configSecret: alertmanager-config
+        resources:
+          requests:
+            cpu: 25m
+            memory: 64Mi
+          limits:
+            cpu: 100m
+            memory: 256Mi
+
+    # Grafana — dashboards for VictoriaMetrics.
+    grafana:
+      enabled: true
+      admin:
+        # Password comes from an ExternalSecret in ops-prod.
+        # See grafana-externalsecret.yaml.
+        existingSecret: grafana-admin
+        userKey: admin-user
+        passwordKey: admin-password
+      persistence:
+        enabled: true
+        size: 5Gi
+        storageClassName: gp3
+      service:
+        type: ClusterIP
+      # Default datasources auto-configured by chart:
+      #   - VMSingle (metrics)
+      # Loki datasource added via additionalDataSources.
+      sidecar:
+        dashboards:
+          enabled: true
+          searchNamespace: ALL
+        datasources:
+          enabled: true
+          searchNamespace: ALL
+      resources:
+        requests:
+          cpu: 50m
+          memory: 128Mi
+        limits:
+          cpu: 500m
+          memory: 512Mi
+
+    # Node metrics.
+    nodeExporter:
+      enabled: true
+
+    # Cluster-state metrics (Deployments, Nodes, Pods, etc.).
+    kubeStateMetrics:
+      enabled: true
+
+    # Chart-shipped default alerts (Kubernetes-level). Good baseline.
+    defaultRules:
+      create: true
+      rules:
+        # Enable most rule groups. Drop `alertmanager` (self-referential
+        # and noisy on single-replica); we alert on Alertmanager via
+        # AWS CloudWatch if needed.
+        alertmanager: false
+        etcd: false  # EKS-managed
+        kubeApiserverAvailability: true
+        kubeApiserverBurnrate: true
+        kubeApiserverHistogram: true
+        kubeApiserverSlos: true
+        kubelet: true
+        kubeProxy: false  # EKS-managed (aws-node)
+        kubernetesApps: true
+        kubernetesResources: true
+        kubernetesStorage: true
+        kubernetesSystem: true
+        kubeScheduler: false  # EKS-managed
+        kubeStateMetrics: true
+        network: true
+        node: true
+        nodeExporterAlerting: true
+        nodeExporterRecording: true
+        prometheus: false  # not applicable (we run vmsingle)
+        prometheusOperator: false

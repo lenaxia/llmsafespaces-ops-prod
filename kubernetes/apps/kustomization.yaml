@@ -4,4 +4,7 @@ kind: Kustomization
 resources:
   - ./external-secrets
   - ./cert-manager
+  - ./flux-system
+  - ./monitoring
+  - ./security
   - ./llmsafespaces

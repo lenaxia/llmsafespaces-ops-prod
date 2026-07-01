@@ -34,6 +34,9 @@ kubernetes/
 └── apps/                          # All workloads
     ├── external-secrets/          # ExternalSecrets operator + ClusterSecretStore
     ├── cert-manager/              # Validating webhook cert issuer
+    ├── flux-system/               # PDBs for Flux controllers
+    ├── monitoring/                # VictoriaMetrics + Grafana + Loki + Vector + Alertmanager
+    ├── security/                  # Falco runtime threat detection
     └── llmsafespaces/             # The platform chart + workarounds
 ```
 
@@ -114,15 +117,37 @@ flux get all -A
 For Helm-installed apps, also add the `HelmRepository` to
 `kubernetes/flux/repositories/helm/` if it's not already there.
 
-## Phase 2 apps (not yet in this repo)
+## Deployed apps
 
-The production-hardening roadmap (lenaxia/llmsafespaces-aws-cdk#12)
-calls for these next:
+- **external-secrets-operator** (v0.10.5) — materializes K8s Secrets from AWS Secrets Manager
+- **cert-manager** (v1.16.2) — chart webhook certificate issuer, 2 replicas with PDBs
+- **VictoriaMetrics k8s stack** (single-node vmsingle + vmagent + vmalert + Alertmanager + Grafana + node-exporter + kube-state-metrics)
+- **Loki** (v6.24, single-binary mode with 50Gi PVC) — log aggregation
+- **Vector** (Agent DaemonSet) — ships container logs to Loki
+- **Falco** (v4.20, modern-bpf driver) — runtime threat detection with workspace-specific rules (crypto miner, fork bombs)
+- **llmsafespaces** chart — the platform itself
 
-- **VictoriaMetrics** + Grafana + Loki + Vector (metrics + logs)
-- **Falco** (runtime threat detection)
-- **Cilium** with FQDN egress NetworkPolicy for workspace pods
-- **Cloudflare** integration (DNS, WAF rules via Cloudflare Workers)
+## Alerting
+
+Alertmanager routes all firing alerts to:
+- **Slack**: `#alerts` channel (both critical and warning severity)
+- **Pushover**: mobile push (critical only, to avoid notification spam)
+
+Configuration lives at `kubernetes/apps/monitoring/alertmanager/alertmanager-config.sops.yaml`
+(SOPS-encrypted). Update the placeholder webhook URL / Pushover credentials via:
+
+```bash
+sops kubernetes/apps/monitoring/alertmanager/alertmanager-config.sops.yaml
+```
+
+Falco events feed into the same Alertmanager via `falcosidekick`, so workspace
+security violations arrive through the same channels.
+
+## Still to add (see repo issues)
+
+- **[Cilium FQDN egress](../../../../issues/1)** — restrict workspace egress to LLM-provider FQDNs
+- **[EKS 1.33](../../../../issues/2)** — unblock Flux 2.8+ (currently pinned to 2.7.5)
+- **[Per-account quota tracking](../../../../issues/3)** — needs upstream chart changes
 
 ## License
 
