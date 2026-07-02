@@ -100,3 +100,12 @@ spec:
   interval: 30m
   retryInterval: 2m
   timeout: 5m
+  # cluster-kube-system-cilium reports Ready as soon as the manifests
+  # are applied, but the Cilium HelmRelease is created suspended and
+  # only becomes Ready post-migration. Explicit healthCheck here so
+  # this Kustomization stays pending until the operator un-suspends.
+  healthChecks:
+    - apiVersion: helm.toolkit.fluxcd.io/v2
+      kind: HelmRelease
+      name: cilium
+      namespace: kube-system

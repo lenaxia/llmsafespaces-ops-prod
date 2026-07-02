@@ -31,12 +31,14 @@ spec:
   sourceRef:
     kind: GitRepository
     name: llmsafespaces-ops
-  wait: true
+  # NB: wait/healthChecks intentionally NOT set here. The HelmRelease
+  # ships with spec.suspend=true (see helm-release.yaml) and will stay
+  # that way until the migration completes; wait+healthChecks would
+  # cause the Kustomization to hang forever during migration prep.
+  #
+  # Downstream Kustomizations (cluster-llmsafespaces-policy) that need
+  # cilium actually running set their own healthChecks against the HR
+  # rather than relying on the Kustomization dependency alone.
   interval: 30m
-  timeout: 15m
+  timeout: 5m
   retryInterval: 2m
-  healthChecks:
-    - apiVersion: helm.toolkit.fluxcd.io/v2
-      kind: HelmRelease
-      name: cilium
-      namespace: kube-system
