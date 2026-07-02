@@ -99,7 +99,6 @@ helm install cilium cilium/cilium --version 1.17.6 \
   --set eni.enabled=true \
   --set eni.awsReleaseExcessIPs=true \
   --set routingMode=native \
-  --set tunnel=disabled \
   --set egressMasqueradeInterfaces=eth+ \
   --set kubeProxyReplacement=true \
   --set k8sServiceHost=$API_HOST \
@@ -193,13 +192,17 @@ curl -sf https://safespaces.thekao.cloud/livez && echo OK
 
 ## Step 6 — Push the ops-prod repo change (~2 min)
 
-At this point the cluster is running Cilium bootstrapped by helm CLI. Push the Flux-managed HelmRelease so Flux takes over:
+At this point the cluster is running Cilium bootstrapped by helm CLI. Un-suspend the Flux HelmRelease so Flux takes over reconciliation:
 
 ```bash
 cd ~/llmsafespaces-ops-prod
-# The relevant files should already be committed on your working branch.
-git log --oneline -5
-git push  # if not already pushed
+
+# Un-suspend the HelmRelease. The manifest ships with spec.suspend=true
+# so Flux doesn't race the migration. Remove the `suspend: true` line
+# from kubernetes/apps/kube-system/cilium/app/helm-release.yaml, then:
+git diff kubernetes/apps/kube-system/cilium/app/helm-release.yaml
+git commit -am "cilium: un-suspend HelmRelease post-migration"
+git push
 
 # Flux picks up in ~2min. Force reconcile:
 flux reconcile source git llmsafespaces-ops
@@ -208,10 +211,12 @@ flux reconcile kustomization cluster-apps
 # Watch Cilium's HelmRelease adopt the bootstrap release.
 kubectl -n kube-system get hr cilium -w
 # Status → Ready. If it goes into UpgradeFailed with the message
-# "release cilium exists" you need to run:
-#   helm --namespace kube-system get metadata cilium
-# and confirm it's already labeled owned=flux — if not, patch:
-#   kubectl -n kube-system label secret sh.helm.release.v1.cilium.v1 owner=helm managed-by=Helm --overwrite
+# "release cilium exists" you need to annotate the existing release
+# so Flux takes ownership:
+#   kubectl -n kube-system label secret sh.helm.release.v1.cilium.v1 \
+#     app.kubernetes.io/managed-by=Helm \
+#     helm.toolkit.fluxcd.io/name=cilium \
+#     helm.toolkit.fluxcd.io/namespace=kube-system --overwrite
 ```
 
 Once Flux is reconciling Cilium successfully, the `cluster-llmsafespaces-policy` Kustomization (which depends on cilium's HR being Ready) will apply the `workspace-egress-allowlist` CNP.

@@ -27,6 +27,12 @@ metadata:
   name: cilium
   namespace: kube-system
 spec:
+  # SUSPEND until the migration procedure (docs/runbooks/cilium-migration.md)
+  # completes. Flux would otherwise race the VPC CNI on install and
+  # break pod networking on both sides. After the manual helm-install
+  # + node-cycle steps, remove this line so Flux adopts + reconciles
+  # the release from here on. See runbook step 6.
+  suspend: true
   interval: 30m
   chart:
     spec:
@@ -67,8 +73,10 @@ spec:
     # on nitro, ens5+ on some other instance types — chart's default
     # `eth+` handles both).
     egressMasqueradeInterfaces: eth+
-    # Turn off the internal tunnel since we route natively.
-    tunnel: disabled
+    # NB: `tunnel: disabled` was removed in Cilium 1.15. The equivalent
+    # for 1.15+ is `routingMode: native` alone (native routing implies
+    # no encapsulation). See:
+    #   https://docs.cilium.io/en/v1.15/operations/upgrade/#helm-options
 
     # === kube-proxy replacement ===
     # `true` = replace kube-proxy entirely. Requires k8sServiceHost/Port
