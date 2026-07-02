@@ -68,21 +68,23 @@ spec:
         #
         # Priority levels:
         #   emergency, alert, critical, error, warning, notice, informational
-        #
-        # Falco default output goes to stdout; we route via falcosidekick.
 
+        # Match workspace pods by their K8s namespace only. Label-based
+        # matching runs into Falco's parser choking on the '/' in
+        # `k8s.pod.label.app.kubernetes.io/name`, so we use the
+        # namespace instead. Chart runs workspaces in `llmsafespaces`
+        # namespace alongside api/controller/frontend; downside is
+        # api/controller/frontend also match. Acceptable — those pods
+        # shouldn't be running crypto miners either.
         - macro: workspace_pod
-          condition: (k8s.ns.name = "llmsafespaces" and k8s.pod.label.app.kubernetes.io/name = "workspace")
+          condition: k8s.ns.name = "llmsafespaces"
 
-        # Crypto-mining process names (comprehensive but not exhaustive).
+        # Crypto-mining process names.
         - list: crypto_miner_binaries
           items: [xmrig, ethminer, ccminer, cgminer, sgminer, cpuminer,
                   minerd, phoenixminer, teamredminer, nbminer, t-rex,
                   gminer, lolminer, bminer, srbminer, xmr-stak]
 
-        # Standard Falco has this rule but we bump it to critical for
-        # workspace pods since we own the isolation and any hit is
-        # actionable.
         - rule: Workspace pod running crypto miner
           desc: >
             Detect known crypto miner binary running inside a workspace
@@ -104,28 +106,17 @@ spec:
         - rule: Workspace pod outbound to mining pool
           desc: >
             Detect a workspace pod connecting to a well-known crypto
-            mining pool. Cheap catch-net; assumes standard resolver.
+            mining pool port.
           condition: >
             outbound
             and workspace_pod
-            and (fd.sip.name contains "pool" and fd.sport in (3333, 4444, 5555, 7777, 8888, 9999))
+            and (fd.sport in (3333, 4444, 5555, 7777, 8888, 9999))
+            and (fd.sip.name contains "pool" or fd.sip.name contains "mine")
           output: >
             Workspace pod connecting to mining pool
             (workspace=%k8s.pod.name dest=%fd.sip.name:%fd.sport container=%container.id)
           priority: WARNING
           tags: [workspace, cryptomining, network]
-
-        # Detect fork bombs / suspicious rapid process spawns.
-        - rule: Workspace excessive fork rate
-          desc: Detect a workspace spawning >100 processes/sec (fork bomb).
-          condition: >
-            spawned_process
-            and workspace_pod
-          output: >
-            Rapid process spawn in workspace
-            (workspace=%k8s.pod.name proc=%proc.name)
-          priority: NOTICE
-          tags: [workspace, abuse]
 
     # Resource requests: Falco is a DaemonSet so we care per-node.
     resources:
