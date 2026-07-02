@@ -50,3 +50,8 @@ Each runbook follows the same structure:
 
 - [alertmanager-not-firing](./alertmanager-not-firing.md) — Watchdog dead-man-switch
 - [alertmanager-failed-to-send](./alertmanager-failed-to-send.md)
+
+### Migrations (one-time, procedural)
+
+- [Cilium CNI swap](./cilium-migration.md) — replace VPC CNI + kube-proxy with Cilium in ENI mode
+- [DR RDS recovery](./dr-rds-recovery.md) — restore RDS from an automated snapshot; captures RTO measurement

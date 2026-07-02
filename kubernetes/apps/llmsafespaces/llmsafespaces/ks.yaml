@@ -66,3 +66,37 @@ spec:
       kind: HelmRelease
       name: llmsafespaces
       namespace: llmsafespaces
+---
+# Stage 3: CiliumNetworkPolicy for workspace egress. Split from the
+# chart Kustomization so we can:
+#   1. Depend on Cilium's HelmRelease (policy engine must exist before
+#      we create CNP resources or the API server rejects them).
+#   2. Manage the policy lifecycle separately — a bad rule set can be
+#      rolled back without touching the chart.
+#
+# The chart itself ships a stock NetworkPolicy (networkPolicy.enabled=true
+# in values), which Cilium enforces natively. This adds the
+# Cilium-specific FQDN egress on top.
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: cluster-llmsafespaces-policy
+  namespace: flux-system
+spec:
+  targetNamespace: llmsafespaces
+  commonMetadata:
+    labels:
+      app.kubernetes.io/name: llmsafespaces
+      app.kubernetes.io/component: policy
+  dependsOn:
+    - name: cluster-llmsafespaces
+    - name: cluster-kube-system-cilium
+  path: ./kubernetes/apps/llmsafespaces/llmsafespaces/policy
+  prune: true
+  sourceRef:
+    kind: GitRepository
+    name: llmsafespaces-ops
+  wait: true
+  interval: 30m
+  retryInterval: 2m
+  timeout: 5m

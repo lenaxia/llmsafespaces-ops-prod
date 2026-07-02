@@ -1,0 +1,150 @@
+---
+# Cilium — pod CNI + kube-proxy replacement + policy engine.
+#
+# Version: 1.17.6 (K8s 1.32 supported per compat matrix; we're on EKS
+# 1.32.13-eks). Cilium's own upgrade compat guarantees are between
+# adjacent minor versions, so mind that when bumping.
+#
+# Mode: ENI IPAM + native routing. Cilium manages ENIs directly on the
+# node, IPs come from the VPC subnet the ENI is attached to. Native
+# routing means no overlay (no vxlan/geneve overhead); pod IPs are
+# routable inside the VPC.
+#
+# kubeProxyReplacement=true: Cilium replaces the kube-proxy DaemonSet.
+# Requires k8sServiceHost/k8sServicePort (the apiserver, since Cilium
+# is what would otherwise proxy to it via ClusterIP).
+#
+# egressGateway is NOT enabled — we don't need cross-subnet egress via
+# a specific node yet. Enable if we ever want workspace pods to egress
+# via a fixed public IP for allowlist-based provider access.
+#
+# Hubble + relay + UI: eBPF flow visibility. Cheap to run (<200MB RAM
+# total on this cluster size). Not exposed via Ingress; use
+# `cilium hubble ui` / `kubectl port-forward` for now.
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: cilium
+  namespace: kube-system
+spec:
+  interval: 30m
+  chart:
+    spec:
+      chart: cilium
+      version: 1.17.6
+      sourceRef:
+        kind: HelmRepository
+        name: cilium
+        namespace: flux-system
+  install:
+    remediation:
+      retries: 3
+    timeout: 15m
+    disableWait: false
+  upgrade:
+    cleanupOnFail: true
+    remediation:
+      strategy: rollback
+      retries: 3
+    timeout: 15m
+  values:
+    # Cluster identity — must match if we ever add clustermesh, and
+    # shows up in Hubble flow logs.
+    cluster:
+      name: llmsafespaces
+      id: 1
+
+    # === IPAM & routing ===
+    ipam:
+      mode: eni
+    eni:
+      enabled: true
+      # Update the awsReleaseExcessIPs default — release unused IPs
+      # every 30s so we don't waste ENI IP addresses on scale-down.
+      awsReleaseExcessIPs: true
+    routingMode: native
+    # Egress masquerade on any eth-prefixed interface (AWS uses eth0
+    # on nitro, ens5+ on some other instance types — chart's default
+    # `eth+` handles both).
+    egressMasqueradeInterfaces: eth+
+    # Turn off the internal tunnel since we route natively.
+    tunnel: disabled
+
+    # === kube-proxy replacement ===
+    # `true` = replace kube-proxy entirely. Requires k8sServiceHost/Port
+    # so Cilium knows where the apiserver is (can't ClusterIP itself).
+    kubeProxyReplacement: true
+    # Substituted from cluster-config ConfigMap (CDK-managed).
+    # The value is the EKS API endpoint HOST ONLY — no scheme.
+    k8sServiceHost: ${KUBERNETES_API_HOST}
+    k8sServicePort: 443
+
+    # === Operator HA ===
+    operator:
+      replicas: 2
+      rollOutPods: true
+      # Anti-affinity spreads across nodes; on a 2-node cluster this
+      # gives us one operator per node.
+      podAntiAffinity: hard
+      prometheus:
+        enabled: true
+        serviceMonitor:
+          enabled: true
+
+    # === Cilium agent ===
+    # rollOutCiliumPods: rolling-restart the DS pods when config changes.
+    rollOutCiliumPods: true
+    # Higher priority than default so cilium schedules even under
+    # pressure. system-node-critical prevents kubelet from evicting.
+    priorityClassName: system-node-critical
+
+    # === Observability ===
+    hubble:
+      enabled: true
+      # Metrics feed VictoriaMetrics via /metrics scrape (see
+      # kubernetes/apps/monitoring/victoria-metrics-k8s-stack/*).
+      metrics:
+        enabled:
+          - dns:query;ignoreAAAA
+          - drop
+          - tcp
+          - flow
+          - port-distribution
+          - icmp
+          - httpV2:exemplars=true;labelsContext=source_ip,source_namespace,source_workload,destination_ip,destination_namespace,destination_workload,traffic_direction
+        # Hubble metric scraping via ServiceMonitor when Prometheus
+        # Operator CRDs exist (vm-stack ships them).
+        serviceMonitor:
+          enabled: true
+      relay:
+        enabled: true
+        rollOutPods: true
+      ui:
+        enabled: true
+        rollOutPods: true
+
+    # === Prometheus scrape via ServiceMonitor ===
+    # cilium-agent metrics get their own ServiceMonitor; the sidecar
+    # discovers them automatically.
+    prometheus:
+      enabled: true
+      serviceMonitor:
+        enabled: true
+
+    # === Security hardening ===
+    # Enable L7 DNS visibility for toFQDNs enforcement. Cilium runs a
+    # DNS proxy that intercepts pod DNS queries, resolves them, and
+    # records the resolved IPs against the FQDN in policy.
+    dnsProxy:
+      # 10k concurrent queries handled by the proxy per node — plenty
+      # for a workspace-heavy cluster.
+      maxRestoreDNSIPs: 1000
+    # Enable policy tracing (Hubble already does this but flag it
+    # explicitly so we don't rely on implicit defaults).
+    policyEnforcementMode: "default"
+
+    # ENI mode + native routing means encryption isn't needed at the
+    # Cilium layer (VPC is our trust boundary). Turn on wireguard if
+    # we ever adopt inter-cluster mesh.
+    encryption:
+      enabled: false

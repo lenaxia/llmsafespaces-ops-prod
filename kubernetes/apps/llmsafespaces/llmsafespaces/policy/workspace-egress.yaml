@@ -1,0 +1,115 @@
+---
+# Workspace egress allowlist — the actual security value of running
+# Cilium as our CNI.
+#
+# Applies to: pods in the llmsafespaces namespace with labels
+# app=llmsafespaces + component=workspace. These are the sandboxed
+# user code pods spawned by the controller (see
+# lenaxia/LLMSafeSpaces controller/internal/workspace/pod_builder.go).
+#
+# What this allows:
+#   - Kube DNS (kube-system/kube-dns Service, port 53). Cilium's DNS
+#     proxy intercepts these to learn resolved FQDN→IP mappings for
+#     the toFQDNs rules below.
+#   - Egress to LLM provider APIs, package registries, and Git hosts
+#     over 443 (TLS). Anything not in this list is denied.
+#
+# Default-deny behavior: as soon as a CiliumNetworkPolicy attaches to
+# a pod, all egress not explicitly matched is dropped. No separate
+# "deny all" rule needed.
+#
+# The FQDN list should stay small and audited. Adding entries here is
+# the correct way to unblock a workspace user's tool that needs
+# external access; adding a wildcard (matchPattern: "*") defeats the
+# purpose.
+#
+# Rollback: `kubectl -n llmsafespaces delete cnp
+# workspace-egress-allowlist` — restores previous behavior (which,
+# without any policy, is: allowed to anything the VPC route table +
+# NACLs permit, i.e. all outbound to internet via NAT).
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: workspace-egress-allowlist
+  namespace: llmsafespaces
+spec:
+  endpointSelector:
+    matchLabels:
+      # These are the bare (non-`app.kubernetes.io/`-prefixed) labels
+      # the controller sets on workspace pods. Do not change without
+      # coordinating an upstream chart change first.
+      app: llmsafespaces
+      component: workspace
+  egress:
+    # ---- Kube DNS ----
+    # Workspace pods must resolve names via kube-dns. This rule allows
+    # the UDP:53 hop AND declares the intent to Cilium's DNS proxy so
+    # that responses get remembered for toFQDNs matching below.
+    - toEndpoints:
+        - matchLabels:
+            k8s:io.kubernetes.pod.namespace: kube-system
+            k8s:k8s-app: kube-dns
+      toPorts:
+        - ports:
+            - port: "53"
+              protocol: UDP
+          rules:
+            dns:
+              # Match all queries; without this, toFQDNs below won't
+              # learn any IPs and will drop all subsequent traffic.
+              - matchPattern: "*"
+
+    # ---- LLM provider APIs (HTTPS) ----
+    # opencode.ai is the primary relay endpoint; the others are used
+    # when the workspace user has configured a direct provider API
+    # key (`openrouter.ai`, `api.anthropic.com`, etc.).
+    - toFQDNs:
+        - matchName: opencode.ai
+        - matchName: relay.safespaces.dev
+        - matchName: api.openai.com
+        - matchName: api.anthropic.com
+        - matchName: api.groq.com
+        - matchName: openrouter.ai
+        - matchName: api.together.xyz
+        - matchName: api.mistral.ai
+        - matchName: generativelanguage.googleapis.com
+        - matchName: api.deepseek.com
+      toPorts:
+        - ports:
+            - port: "443"
+              protocol: TCP
+
+    # ---- Package registries ----
+    # Workspace users routinely `pip install` / `npm install` /
+    # `docker pull` during agent tasks. Docker Hub uses a nest of
+    # subdomains (`registry-1.docker.io`, `production.cloudflare.docker.com`,
+    # etc.); pattern-match on *.docker.io covers the common set.
+    - toFQDNs:
+        - matchName: registry.npmjs.org
+        - matchName: pypi.org
+        - matchName: files.pythonhosted.org
+        - matchName: registry-1.docker.io
+        - matchName: auth.docker.io
+        - matchName: production.cloudflare.docker.com
+        - matchPattern: "*.docker.io"
+        - matchName: ghcr.io
+        - matchPattern: "*.ghcr.io"
+      toPorts:
+        - ports:
+            - port: "443"
+              protocol: TCP
+
+    # ---- Git hosts ----
+    # Cloning + browsing repos during agent tasks.
+    - toFQDNs:
+        - matchName: github.com
+        - matchName: api.github.com
+        - matchName: raw.githubusercontent.com
+        - matchName: codeload.github.com
+        - matchName: objects.githubusercontent.com
+        - matchName: gitlab.com
+        - matchName: bitbucket.org
+      toPorts:
+        - ports:
+            - port: "443"
+              protocol: TCP

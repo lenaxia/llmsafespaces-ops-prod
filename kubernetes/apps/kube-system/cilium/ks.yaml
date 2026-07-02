@@ -1,0 +1,42 @@
+---
+# Cilium is the pod-network CNI + kube-proxy replacement + network
+# policy engine + FQDN egress enforcer. It replaces the default
+# EKS-provided aws-node (VPC CNI) and kube-proxy DaemonSets.
+#
+# This Kustomization applies ONLY the HelmRelease. Cluster-wide policy
+# resources (CiliumNetworkPolicy / CiliumClusterwideNetworkPolicy) live
+# with the workloads they protect (see
+# kubernetes/apps/llmsafespaces/llmsafespaces/policy/).
+#
+# Migration procedure and rollback are in
+# docs/runbooks/cilium-migration.md — this Kustomization assumes the
+# migration has already been performed (aws-node and kube-proxy
+# DaemonSets already deleted; nodes already cycled). Flux only owns
+# steady-state reconciliation.
+#
+# wait=true + healthChecks: block downstream Kustomizations (which
+# might create CiliumNetworkPolicy CRs) until the HelmRelease is Ready.
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: cluster-kube-system-cilium
+  namespace: flux-system
+spec:
+  targetNamespace: kube-system
+  commonMetadata:
+    labels:
+      app.kubernetes.io/name: cilium
+  path: ./kubernetes/apps/kube-system/cilium/app
+  prune: true
+  sourceRef:
+    kind: GitRepository
+    name: llmsafespaces-ops
+  wait: true
+  interval: 30m
+  timeout: 15m
+  retryInterval: 2m
+  healthChecks:
+    - apiVersion: helm.toolkit.fluxcd.io/v2
+      kind: HelmRelease
+      name: cilium
+      namespace: kube-system

@@ -9,4 +9,5 @@ resources:
   - ./helm/grafana.yaml
   - ./helm/falcosecurity.yaml
   - ./helm/vector.yaml
+  - ./helm/cilium.yaml
   - ./git/llmsafespaces.yaml
