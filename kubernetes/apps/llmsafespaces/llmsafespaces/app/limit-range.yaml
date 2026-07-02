@@ -1,0 +1,41 @@
+---
+# LimitRange enforcing per-container caps on any pod in the llmsafespaces
+# namespace that doesn't set explicit requests/limits. Prevents a runaway
+# workspace (or a mis-configured RuntimeEnvironment) from consuming an
+# entire node.
+#
+# Chart-configured resources (api, controller, frontend) already have
+# explicit requests/limits and won't be affected. Workspace pods are the
+# main target — if a user or misconfig produces a pod without limits,
+# it inherits these defaults.
+#
+# Values: 2 CPU / 4 GiB / 30 GiB ephemeral storage max per container.
+# Sized for m6a.large (2 vCPU, 8 GiB) — one workspace can't hog the node.
+apiVersion: v1
+kind: LimitRange
+metadata:
+  name: workspace-defaults
+  namespace: llmsafespaces
+spec:
+  limits:
+    - type: Container
+      default:
+        cpu: 1000m
+        memory: 2Gi
+        ephemeral-storage: 10Gi
+      defaultRequest:
+        cpu: 100m
+        memory: 256Mi
+        ephemeral-storage: 1Gi
+      max:
+        cpu: 2000m
+        memory: 4Gi
+        ephemeral-storage: 30Gi
+      min:
+        cpu: 10m
+        memory: 32Mi
+    - type: PersistentVolumeClaim
+      max:
+        storage: 20Gi
+      min:
+        storage: 1Gi
