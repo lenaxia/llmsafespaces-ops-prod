@@ -9,7 +9,7 @@ spec:
   chart:
     spec:
       chart: falco
-      version: 4.20.0
+      version: 9.1.0
       sourceRef:
         kind: HelmRepository
         name: falcosecurity
@@ -17,12 +17,13 @@ spec:
   install:
     remediation:
       retries: 3
-    timeout: 10m
+    timeout: 15m
   upgrade:
     cleanupOnFail: true
     remediation:
       strategy: rollback
       retries: 3
+    timeout: 15m
   values:
     # Kernel driver: modern-bpf (CO-RE eBPF) — no kernel headers needed,
     # works on any modern kernel including AL2023. This is the default
@@ -156,18 +157,15 @@ spec:
               - falco-rules:latest
 
     falco:
-      # Bind the SocketFile — required for falcosidekick.
-      grpc:
-        enabled: true
-        threadiness: 8
-      grpcOutput:
-        enabled: true
+      # Load default rules + our custom rules.
+      # Chart 9.x + Falco 0.44 has engine version 0.57 (matches
+      # what falcoctl pulls for :latest rules).
+      #
       # Standard events go to stdout for cluster log capture.
       stdoutOutput:
         enabled: true
       jsonOutput: true
       jsonIncludeOutputProperty: true
-      # Fail-open on kernel driver load failure — better than pods stuck.
       httpOutput:
         enabled: false
       # Priority threshold — anything below this is dropped at source.

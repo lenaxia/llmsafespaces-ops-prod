@@ -62,10 +62,18 @@ spec:
           # Auth off (single-tenant); no tenant_id required.
           encoding:
             codec: json
+          # The chart wraps values through `tpl` which interprets {{ }}
+          # as Go templates. Vector's own template syntax {{ .foo }}
+          # collides. Escape by wrapping each Vector template in a raw
+          # string via `{{ printf "%s" "..." }}`.
+          #
+          # Vector uses this label syntax to interpolate event fields
+          # into label values at ingest time. We produce namespace, pod,
+          # container labels for Loki.
           labels:
-            namespace: '{{ namespace }}'
-            pod: '{{ pod }}'
-            container: '{{ container }}'
+            namespace: '{{ `{{ namespace }}` }}'
+            pod: '{{ `{{ pod }}` }}'
+            container: '{{ `{{ container }}` }}'
           out_of_order_action: accept
     resources:
       requests:
