@@ -93,6 +93,17 @@ spec:
           alb.ingress.kubernetes.io/ssl-redirect: '443'
           alb.ingress.kubernetes.io/healthcheck-path: /livez
           alb.ingress.kubernetes.io/certificate-arn: ${ACM_CERT_ARN}
+          # -- Origin lock (Cloudflare edge only): DISABLED by default. --
+          # Enabling it BEFORE Cloudflare is proxying the domain will
+          # black-hole all inbound traffic (DNS-only mode with no
+          # Cloudflare IP as origin = no allowed source). Enable via
+          # the cloudflare-cutover runbook, step "flip origin lock".
+          # See docs/runbooks/cloudflare-cutover.md.
+          #
+          # When enabling, apply the annotations from cloudflare-ip-ranges.yaml
+          # (the ConfigMap in this same dir) to this Ingress under:
+          #   alb.ingress.kubernetes.io/inbound-cidrs
+          #   alb.ingress.kubernetes.io/inbound-ipv6-cidrs
 
     runtimeEnvironments:
       base:

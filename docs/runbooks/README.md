@@ -54,4 +54,5 @@ Each runbook follows the same structure:
 ### Migrations (one-time, procedural)
 
 - [Cilium CNI swap](./cilium-migration.md) — replace VPC CNI + kube-proxy with Cilium in ENI mode
+- [Cloudflare cutover + ALB origin lock](./cloudflare-cutover.md) — enable Cloudflare proxy + lock ALB SG to Cloudflare edge IPs
 - [DR RDS recovery](./dr-rds-recovery.md) — restore RDS from an automated snapshot; captures RTO measurement

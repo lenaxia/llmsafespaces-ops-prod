@@ -1,0 +1,69 @@
+# Cloudflare public IP ranges (IPv4 + IPv6).
+#
+# Sources (canonical, updated by Cloudflare):
+#   https://www.cloudflare.com/ips-v4/
+#   https://www.cloudflare.com/ips-v6/
+#
+# This file is consumed by the `alb.ingress.kubernetes.io/inbound-cidrs`
+# and `alb.ingress.kubernetes.io/inbound-ipv6-cidrs` annotations on the
+# llmsafespaces frontend Ingress. Those annotations tell the AWS Load
+# Balancer Controller to restrict the ALB Security Group's :443 inbound
+# rule to exactly this set of source ranges.
+#
+# Effect: after this is applied, traffic hitting the ALB directly (i.e.
+# bypassing Cloudflare's proxy layer) is dropped at the AWS SG level.
+# Combined with Cloudflare's WAF + rate-limits, this closes the "attacker
+# bypasses CF by hitting the ALB IP directly" hole.
+#
+# Refresh cadence: Cloudflare updates these ranges rarely (once every
+# 1-3 years). Renovate is configured to auto-PR bumps of the source
+# checksum below. On any change, re-run this rendering step and update
+# the HelmRelease annotations.
+#
+# Rendering:
+#   ./scripts/render-cloudflare-cidrs.sh > /tmp/cf.env
+#   # Copy the CF_CIDRS_V4 and CF_CIDRS_V6 values into
+#   # kubernetes/apps/llmsafespaces/llmsafespaces/app/helm-release.yaml
+#   # under frontend.ingress.annotations. Commit + push.
+#
+# Snapshot date: 2026-07-02
+# Sha256(concat(ips-v4, ips-v6)) recorded in the header below.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  # This ConfigMap is documentation + a Renovate anchor. It is NOT
+  # consumed by anything at runtime; the actual values live in the
+  # Ingress annotations (see helm-release.yaml). Kept as a
+  # ConfigMap because it's easier to review changes as a diff of
+  # structured data than of a big annotation string.
+  name: cloudflare-ip-ranges
+  namespace: llmsafespaces
+  annotations:
+    llmsafespaces.dev/source-v4: "https://www.cloudflare.com/ips-v4/"
+    llmsafespaces.dev/source-v6: "https://www.cloudflare.com/ips-v6/"
+    llmsafespaces.dev/snapshot-date: "2026-07-02"
+data:
+  ips-v4: |
+    173.245.48.0/20
+    103.21.244.0/22
+    103.22.200.0/22
+    103.31.4.0/22
+    141.101.64.0/18
+    108.162.192.0/18
+    190.93.240.0/20
+    188.114.96.0/20
+    197.234.240.0/22
+    198.41.128.0/17
+    162.158.0.0/15
+    104.16.0.0/13
+    104.24.0.0/14
+    172.64.0.0/13
+    131.0.72.0/22
+  ips-v6: |
+    2400:cb00::/32
+    2606:4700::/32
+    2803:f800::/32
+    2405:b500::/32
+    2405:8100::/32
+    2a06:98c0::/29
+    2c0f:f248::/32
