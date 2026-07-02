@@ -115,15 +115,47 @@ spec:
         existingSecret: grafana-admin
         userKey: admin-user
         passwordKey: admin-password
+      # Grafana OSS built-in auth is fine; disable anonymous.
+      grafana.ini:
+        auth:
+          disable_login_form: false
+          disable_signout_menu: false
+        auth.anonymous:
+          enabled: false
+        security:
+          # cookie_secure requires HTTPS at the edge (ALB).
+          cookie_secure: true
+          cookie_samesite: lax
+        server:
+          # Reflects the actual URL the ALB will publish. Substituted
+          # from cluster-config.
+          root_url: "https://grafana.${DOMAIN}"
       persistence:
         enabled: true
         size: 5Gi
         storageClassName: gp3
       service:
         type: ClusterIP
-      # Default datasources auto-configured by chart:
-      #   - VMSingle (metrics)
-      # Loki datasource added via additionalDataSources.
+      ingress:
+        enabled: true
+        ingressClassName: alb
+        # Grafana's own hostname on the ALB. Same ACM cert covers it
+        # via subject alt (once operator provisions cert with SAN) or
+        # we use a separate ACM cert. For now, reuse the main cert;
+        # operator adds `grafana.${DOMAIN}` as a SAN in ACM console.
+        hosts:
+          - "grafana.${DOMAIN}"
+        annotations:
+          kubernetes.io/ingress.class: alb
+          alb.ingress.kubernetes.io/scheme: internet-facing
+          alb.ingress.kubernetes.io/target-type: ip
+          alb.ingress.kubernetes.io/listen-ports: '[{"HTTP":80},{"HTTPS":443}]'
+          alb.ingress.kubernetes.io/ssl-redirect: '443'
+          alb.ingress.kubernetes.io/certificate-arn: "${ACM_CERT_ARN}"
+          alb.ingress.kubernetes.io/healthcheck-path: /api/health
+          # Group the Grafana ALB with the main llmsafespaces ALB via
+          # the same target group / ALB. Saves ~$16/mo of a second ALB.
+          alb.ingress.kubernetes.io/group.name: llmsafespaces
       sidecar:
         dashboards:
           enabled: true
@@ -147,30 +179,47 @@ spec:
     kubeStateMetrics:
       enabled: true
 
+    # EKS-managed components — their metrics endpoints aren't exposed
+    # to the cluster, so both scraping and default alerts must be
+    # disabled to avoid a permanent stream of false-positive "Down" alerts.
+    kubeControllerManager:
+      enabled: false
+    kubeScheduler:
+      enabled: false
+    kubeProxy:
+      enabled: false
+    kubeEtcd:
+      enabled: false
+
     # Chart-shipped default alerts (Kubernetes-level). Good baseline.
     defaultRules:
       create: true
+      # We already disable the corresponding kubeControllerManager /
+      # kubeScheduler / kubeProxy / kubeEtcd `enabled: false` above,
+      # so rules that use metrics-not-collected won't fire. Keeping
+      # these explicit toggles as belt & suspenders.
       rules:
-        # Enable most rule groups. Drop `alertmanager` (self-referential
-        # and noisy on single-replica); we alert on Alertmanager via
-        # AWS CloudWatch if needed.
+        # Alertmanager rules — the chart emits AlertmanagerFailedToSendAlerts
+        # on Slack/Pushover send failures. That's expected during the
+        # placeholder-URL period + intermittently under load. Enable
+        # once we have real destinations working.
         alertmanager: false
-        etcd: false  # EKS-managed
+        etcd: false
         kubeApiserverAvailability: true
         kubeApiserverBurnrate: true
         kubeApiserverHistogram: true
         kubeApiserverSlos: true
         kubelet: true
-        kubeProxy: false  # EKS-managed (aws-node)
+        kubeProxy: false
         kubernetesApps: true
         kubernetesResources: true
         kubernetesStorage: true
         kubernetesSystem: true
-        kubeScheduler: false  # EKS-managed
+        kubeScheduler: false
         kubeStateMetrics: true
         network: true
         node: true
         nodeExporterAlerting: true
         nodeExporterRecording: true
-        prometheus: false  # not applicable (we run vmsingle)
+        prometheus: false
         prometheusOperator: false
