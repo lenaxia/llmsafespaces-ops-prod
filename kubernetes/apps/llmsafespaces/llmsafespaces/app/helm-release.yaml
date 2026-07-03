@@ -93,6 +93,15 @@ spec:
           alb.ingress.kubernetes.io/ssl-redirect: '443'
           alb.ingress.kubernetes.io/healthcheck-path: /livez
           alb.ingress.kubernetes.io/certificate-arn: ${ACM_CERT_ARN}
+          # Group this Ingress with the vm-stack Grafana Ingress into
+          # ONE ALB (saves ~$16/mo of a second ALB). AWS LBC unions
+          # inbound-cidrs across all Ingresses in the group, so origin
+          # lock applies to both hostnames automatically.
+          #
+          # WARNING: adding this to an existing solo Ingress causes LBC
+          # to migrate to a new ALB (new DNS name). CF DNS records must
+          # be updated after migration.
+          alb.ingress.kubernetes.io/group.name: llmsafespaces
           # ---- Origin lock: only Cloudflare's edge IPs may hit the ALB. ----
           # Enabled 2026-07-02 as part of the CF cutover — see
           # docs/runbooks/cloudflare-cutover.md#step-a10 for the procedure
