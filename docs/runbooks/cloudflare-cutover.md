@@ -478,6 +478,19 @@ curl -s -H "Authorization: Bearer $CF_TOKEN" \
 
 11. **Turnstile widget isn't wired into the chart yet.** Emitted as a Terraform output; the frontend chart needs a values-side plumbing PR (upstream `lenaxia/LLMSafeSpaces`) to render the widget on signup.
 
+12. **`inbound-ipv6-cidrs` annotation is silently dropped when the ALB is IPv4-only.** Symptom: after pushing the origin-lock commit, `describe-security-groups` shows the 15 IPv4 Cloudflare CIDRs (good) but 0 IPv6 rules (worried?). Check the ALB's `IpAddressType`: if `ipv4`, LBC won't add IPv6 SG rules — no IPv6 traffic can reach an IPv4 ALB anyway, so this is a no-op, not a bug. To enable IPv6 origin lock, either recreate the ALB as `dualstack` (chart values change + LBC recreate) or accept that IPv6 is not a threat vector for this deployment.
+
+13. **Ingress annotations from HR values don't always propagate on the first Flux reconcile.** Symptom: `kubectl get ingress -o jsonpath='{.metadata.annotations}'` shows the pre-change annotations, but `kubectl get hr -o jsonpath='{.spec.values.frontend.ingress.annotations}'` shows the new set. Cause: helm-controller may skip a helm-render if it decides nothing changed at the values-hash level (this happened during the 2026-07-02 origin lock push). Workaround: manually re-annotate the HR to force a reconcile:
+
+    ```bash
+    kubectl -n llmsafespaces annotate hr llmsafespaces \
+      reconcile.fluxcd.io/requestedAt=$(date +%s) --overwrite
+    ```
+
+    Or in the flux CLI: `flux reconcile helmrelease -n llmsafespaces llmsafespaces --force`. Once the Ingress annotations are visible via kubectl, AWS LBC picks them up within 30-60s.
+
+14. **Two ALB SGs exist; only the `frontend-sg` (Managed) enforces inbound-cidrs.** When looking up "the ALB SG" via CLI, `LoadBalancers[0].SecurityGroups` returns both `frontend-sg` (name `k8s-llmsafes-...`) and `backend-sg` (name `k8s-traffic-...`, tag `elbv2.k8s.aws/resource=backend-sg`). The origin-lock CIDRs land on the `frontend-sg` only. The `backend-sg` has empty ingress (correct — it only receives traffic from the ALB, which is intra-VPC). When verifying the origin lock, filter by the `backend-sg` tag being absent, or iterate all SGs looking for the one with the `:443` rule.
+
 ---
 
 ## References
