@@ -80,7 +80,8 @@ Total: negligible per drill (< $0.10 including the transient EKS pod).
 
 | Date | Snapshot age | RTO (seconds) | Verify status | Notes |
 |------|--------------|---------------|---------------|-------|
-| 2026-07-02 | ~7h | **392** | ok | First recorded drill on mvp tier (db.t4g.micro, gp3, single-AZ). Restore start → available: 6m 32s. Verify: schema present, 1 row in `provider_credentials`. Well under the 30-min mvp target. |
+| 2026-07-02 (run 1) | ~7h | **392** | ok | First recorded drill on mvp tier (db.t4g.micro, gp3, single-AZ). Restore start → available: 6m 32s. Verify: schema present, 1 row in `provider_credentials`. Well under the 30-min mvp target. |
+| 2026-07-02 (run 2, post-Cilium) | ~16h | **458** | ok | Second drill run after Cilium CNI migration to confirm the drill script still works with Cilium as the CNI. RTO ~+66s higher than run 1, still well under 30-min target. Restored DB reached from an ephemeral kubectl-run psql pod in `default` namespace — no CNI-specific tuning needed. |
 
 ## Failure modes seen in prior drills
 

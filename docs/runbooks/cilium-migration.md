@@ -295,6 +295,10 @@ aws eks create-addon --profile mikekao-prod --region us-west-2 \
 
 9. **Flux single-replica controllers block drain via PDB**. The flux-system Flux controllers ship with `PodDisruptionBudget minAvailable: 1` and are single-replica. Draining a node hosting one of these controllers hits a permanent PDB block. Workaround: temporarily patch each PDB to `maxUnavailable: 1` via `kubectl patch pdb <name> --type=json -p '[{"op":"remove","path":"/spec/minAvailable"},{"op":"add","path":"/spec/maxUnavailable","value":1}]'`. After migration, `flux reconcile kustomization cluster-flux-pdbs` restores the desired state.
 
+10. **The llmsafespaces chart's built-in workspace NetworkPolicy defeats our CNP allowlist.** The chart (`templates/workspace-network-policy.yaml`) creates a `<release>-workspace-egress` K8s NetworkPolicy with an egress rule allowing `0.0.0.0/0` (minus RFC1918). Cilium unions K8s NetworkPolicy allow rules with CiliumNetworkPolicy allow rules — so our tight FQDN-only allowlist becomes redundant. As of 2026-07-02 the CNP is applied and Cilium sees it, but egress to non-allowlisted hosts still succeeds because the chart's NP allows everything. **Fix**: either (a) add a chart-side toggle to disable the workspace-egress NP, or (b) add a Flux HelmRelease `postRenderers.kustomize.patches` block that strips the offending NP's egress rules. Tracked separately; the CNP is in place waiting for the upstream fix. Hubble still records the traffic, so egress observability isn't lost.
+
+11. **Helm-controller field ownership blocks manual helm CLI operations.** After Flux adopts a helm release, its `helm-controller` server-side-applies with `manager: helm-controller`, taking ownership of fields. Later manual `helm upgrade` from the CLI uses `manager: helm` and hits `SSA conflict`. Fix: strip the helm-controller field manager from the affected resources: `kubectl get <res> --show-managed-fields -o json | jq '.metadata.managedFields |= map(select(.manager != "helm-controller"))' | kubectl replace -f -`. Then retry the helm CLI operation.
+
 ## References
 
 - Cilium on EKS ENI mode: <https://cilium.io/blog/2025/06/19/eks-eni-install>
