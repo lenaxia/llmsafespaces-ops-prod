@@ -42,3 +42,13 @@ spec:
   interval: 30m
   timeout: 5m
   retryInterval: 2m
+  # ${KUBERNETES_API_HOST} in helm-release.yaml gets substituted from
+  # the cluster-config ConfigMap (CDK-managed). Without this postBuild
+  # block, Flux would apply the HR with the literal string
+  # "${KUBERNETES_API_HOST}" in values.k8sServiceHost, and the cilium
+  # agent would crashloop on "host must be a URL or a host:port pair"
+  # (learned this the hard way on 2026-07-02).
+  postBuild:
+    substituteFrom:
+      - kind: ConfigMap
+        name: cluster-config
