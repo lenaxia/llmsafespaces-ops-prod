@@ -129,7 +129,15 @@ spec:
         server:
           # Reflects the actual URL the ALB will publish. Substituted
           # from cluster-config.
-          root_url: "https://grafana.${DOMAIN}"
+          #
+          # NB: Grafana's hostname is deliberately a first-level subdomain
+          # under the zone (safespaces-grafana.thekao.cloud) rather than
+          # a nested one (grafana.safespaces.thekao.cloud) so it fits
+          # Cloudflare's Universal SSL wildcard (*.thekao.cloud). Free
+          # tier Universal SSL only covers apex + one wildcard level.
+          # Nested subdomains would need an Advanced Certificate order
+          # (Zone:SSL:Edit token permission required).
+          root_url: "https://${GRAFANA_HOST}"
       persistence:
         enabled: true
         size: 5Gi
@@ -139,12 +147,18 @@ spec:
       ingress:
         enabled: true
         ingressClassName: alb
-        # Grafana's own hostname on the ALB. Same ACM cert covers it
-        # via subject alt (once operator provisions cert with SAN) or
-        # we use a separate ACM cert. For now, reuse the main cert;
-        # operator adds `grafana.${DOMAIN}` as a SAN in ACM console.
+        # Grafana's own hostname on the ALB. Deliberately a first-level
+        # subdomain under thekao.cloud so it fits Cloudflare Universal
+        # SSL's `*.thekao.cloud` wildcard — nested subdomains like
+        # `grafana.safespaces.thekao.cloud` would need a paid Advanced
+        # Certificate order. See the comment on grafana.ini.server.root_url
+        # above for the full reasoning.
+        #
+        # ACM cert (imported via cdk.context.json:certificateArn) is
+        # requested with SAN safespaces-grafana.thekao.cloud so the ALB
+        # can present a valid cert to Cloudflare's origin fetch.
         hosts:
-          - "grafana.${DOMAIN}"
+          - "${GRAFANA_HOST}"
         annotations:
           kubernetes.io/ingress.class: alb
           alb.ingress.kubernetes.io/scheme: internet-facing
