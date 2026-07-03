@@ -27,12 +27,9 @@ metadata:
   name: cilium
   namespace: kube-system
 spec:
-  # SUSPEND until the migration procedure (docs/runbooks/cilium-migration.md)
-  # completes. Flux would otherwise race the VPC CNI on install and
-  # break pod networking on both sides. After the manual helm-install
-  # + node-cycle steps, remove this line so Flux adopts + reconciles
-  # the release from here on. See runbook step 6.
-  suspend: true
+  # Post-migration: Flux now owns steady-state reconciliation.
+  # See docs/runbooks/cilium-migration.md for the one-time migration
+  # that ran before this HR was un-suspended (2026-07-02).
   interval: 30m
   chart:
     spec:
