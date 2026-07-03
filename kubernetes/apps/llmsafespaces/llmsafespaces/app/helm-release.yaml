@@ -171,6 +171,16 @@ spec:
 
     networkPolicy:
       enabled: true
+      # Cilium CiliumNetworkPolicy (workspace-egress-allowlist in
+      # policy/workspace-egress.yaml) is the authoritative egress control
+      # for workspace pods. The chart's built-in workspace-egress NP
+      # would union with the CNP and widen effective egress to whatever
+      # its allowlist permits (0.0.0.0/0 minus RFC1918 by default),
+      # defeating the FQDN-only allowlist we want. Disable it here so
+      # the CNP is the sole authority. See:
+      #   docs/runbooks/cilium-migration.md gotcha #10
+      workspaceEgress:
+        enabled: false
 
     monitoring:
       enabled: false
