@@ -29,6 +29,17 @@ spec:
     provider: sops
     secretRef:
       name: sops-age
+  # HR values reference ${DOMAIN} and ${ACM_CERT_ARN} (Grafana ingress
+  # host + ALB cert). Without this postBuild block, Flux applies the
+  # HR with the literal string "${DOMAIN}" — the chart renders an
+  # Ingress with an invalid RFC1123 host and helm-controller wedges
+  # into a rollback loop that can't complete because the target
+  # revision references a since-removed ConfigMap. Learned during
+  # 2026-07-02 session-5 recovery.
+  postBuild:
+    substituteFrom:
+      - kind: ConfigMap
+        name: cluster-config
   healthChecks:
     - apiVersion: helm.toolkit.fluxcd.io/v2
       kind: HelmRelease
