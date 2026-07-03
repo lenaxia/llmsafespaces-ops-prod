@@ -66,14 +66,17 @@ spec:
       # every 30s so we don't waste ENI IP addresses on scale-down.
       awsReleaseExcessIPs: true
     routingMode: native
-    # Egress masquerade on any eth-prefixed interface (AWS uses eth0
-    # on nitro, ens5+ on some other instance types — chart's default
-    # `eth+` handles both).
-    egressMasqueradeInterfaces: eth+
-    # NB: `tunnel: disabled` was removed in Cilium 1.15. The equivalent
-    # for 1.15+ is `routingMode: native` alone (native routing implies
-    # no encapsulation). See:
-    #   https://docs.cilium.io/en/v1.15/operations/upgrade/#helm-options
+    # Egress masquerade on any ens-prefixed interface. AWS Nitro
+    # instances (t3a, m5+, c5+, r5+, etc.) name their ENIs `ens5`,
+    # `ens6`, ... NOT `eth0`. The Cilium docs example uses `eth+`
+    # which matches nothing on Nitro instances, silently breaking all
+    # pod → internet egress (the return path from ALB → pod still
+    # works because it's inbound, so this fails silently until the
+    # first pod tries to reach an external service).
+    #
+    # `ens+` matches all Nitro ENIs. If we ever run non-Nitro (t2,
+    # m3-, c3-, r3-), broaden to `eth+,ens+`.
+    egressMasqueradeInterfaces: ens+
 
     # === kube-proxy replacement ===
     # `true` = replace kube-proxy entirely. Requires k8sServiceHost/Port
@@ -94,7 +97,7 @@ spec:
       prometheus:
         enabled: true
         serviceMonitor:
-          enabled: true
+          enabled: false  # See note in .prometheus.serviceMonitor below
 
     # === Cilium agent ===
     # rollOutCiliumPods: rolling-restart the DS pods when config changes.
@@ -117,10 +120,16 @@ spec:
           - port-distribution
           - icmp
           - httpV2:exemplars=true;labelsContext=source_ip,source_namespace,source_workload,destination_ip,destination_namespace,destination_workload,traffic_direction
-        # Hubble metric scraping via ServiceMonitor when Prometheus
-        # Operator CRDs exist (vm-stack ships them).
+        # Hubble metric scraping via ServiceMonitor.
+        #
+        # DISABLED for now (2026-07-02): the monitoring stack's
+        # vm-stack HelmRelease is stuck in a failed rollback state,
+        # which means the monitoring.coreos.com/v1 CRDs (which
+        # prometheus-operator ships) aren't installed. Flip this to
+        # true once vm-stack is fixed — separately tracked, not
+        # blocking Cilium reconciliation.
         serviceMonitor:
-          enabled: true
+          enabled: false
       relay:
         enabled: true
         rollOutPods: true
@@ -129,12 +138,17 @@ spec:
         rollOutPods: true
 
     # === Prometheus scrape via ServiceMonitor ===
-    # cilium-agent metrics get their own ServiceMonitor; the sidecar
-    # discovers them automatically.
+    #
+    # DISABLED for now (2026-07-02): monitoring stack's vm-stack HR is
+    # stuck in a failed rollback, so monitoring.coreos.com CRDs aren't
+    # available cluster-side. Flip to true once vm-stack recovers.
+    #
+    # In the meantime, cilium-agent metrics can be scraped by pointing
+    # any prometheus at http://<pod-ip>:9962/metrics manually.
     prometheus:
       enabled: true
       serviceMonitor:
-        enabled: true
+        enabled: false
 
     # === Security hardening ===
     # Enable L7 DNS visibility for toFQDNs enforcement. Cilium runs a

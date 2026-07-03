@@ -99,7 +99,7 @@ helm install cilium cilium/cilium --version 1.17.6 \
   --set eni.enabled=true \
   --set eni.awsReleaseExcessIPs=true \
   --set routingMode=native \
-  --set egressMasqueradeInterfaces=eth+ \
+  --set egressMasqueradeInterfaces=ens+ \
   --set kubeProxyReplacement=true \
   --set k8sServiceHost=$API_HOST \
   --set k8sServicePort=443 \
@@ -286,6 +286,14 @@ aws eks create-addon --profile mikekao-prod --region us-west-2 \
 4. **falco daemonset shows 1/2 Ready.** Pre-existing issue (`kubelet-too-many-pods` on one node). Cilium migration does NOT fix this. Same workaround (bigger instances or prefix delegation).
 
 5. **Older ClusterMesh states**. This cluster has cluster.id=1. If you ever add a second cluster to a mesh, IDs must be unique across the mesh.
+
+6. **`egressMasqueradeInterfaces` must match your ENI naming**. AWS Nitro instances (t3a, m5+, c5+, r5+, everything modern) name their ENIs `ens5`, `ens6`, etc — NOT `eth0`. Setting `egressMasqueradeInterfaces=eth+` (the Cilium blog example) silently breaks all pod → internet egress because the iptables MASQUERADE rule matches no interface. Symptoms: pods can reach in-cluster services + can serve ALB traffic, but ANY `curl external.example.com` from inside a pod hangs then times out. Use `ens+` on Nitro, or `eth+,ens+` if you have a mixed fleet. Session-2 (2026-07-02) tripped over this during the actual migration.
+
+7. **Existing K8s NetworkPolicies get enforced immediately**. Any NetworkPolicy CRDs the old cluster ignored (because VPC CNI didn't enforce them without the aws-network-policy-agent add-on being explicitly enabled) will start being enforced the moment Cilium boots. Look for pods with `POLICY (ingress) Enabled` in `cilium endpoint list`. If a controller suddenly can't reach the K8s API, it's probably an over-restrictive NetworkPolicy on its namespace. Check with `kubectl -n <ns> get networkpolicy`.
+
+8. **Force-delete stuck pods after aws-node deletion**. Pre-migration pods have veth pairs set up by VPC CNI. After you delete `aws-node`, those pods keep running BUT their network state is orphaned — if the pod restarts (e.g. crashloop, OOM, evict), it can't get networking back until it's scheduled onto a Cilium-managed node. Practical workaround: after node cycling completes, `kubectl get pods -A | grep -v Running` and force-delete anything crashlooping. Their replacements will land on Cilium-clean nodes.
+
+9. **Flux single-replica controllers block drain via PDB**. The flux-system Flux controllers ship with `PodDisruptionBudget minAvailable: 1` and are single-replica. Draining a node hosting one of these controllers hits a permanent PDB block. Workaround: temporarily patch each PDB to `maxUnavailable: 1` via `kubectl patch pdb <name> --type=json -p '[{"op":"remove","path":"/spec/minAvailable"},{"op":"add","path":"/spec/maxUnavailable","value":1}]'`. After migration, `flux reconcile kustomization cluster-flux-pdbs` restores the desired state.
 
 ## References
 
