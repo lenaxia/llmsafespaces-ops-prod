@@ -182,6 +182,22 @@ spec:
       workspaceEgress:
         enabled: false
 
+    # Cloudflare Turnstile — CAPTCHA on /register (US-63.x).
+    # Widget + secret provisioned out-of-band 2026-07-04:
+    #   sitekey  = 0x4AAAAAADvViBYSywlB8kIb
+    #   secret   = arn:aws:secretsmanager:us-west-2:572169125554:secret:
+    #                llmsafespaces/turnstile-secret-y6JKHm
+    # ExternalSecret 'llmsafespaces-credentials' pulls the secret into
+    # the K8s Secret at key 'turnstile-secret' (see externalsecret/externalsecret.yaml).
+    # Site key is public and lives in cluster-config as TURNSTILE_SITE_KEY,
+    # substituted here via Flux postBuild.
+    turnstile:
+      enabled: true
+      siteKey: ${TURNSTILE_SITE_KEY}
+      secretKey:
+        existingSecret: llmsafespaces-credentials
+        key: turnstile-secret
+
     monitoring:
       enabled: false
 
